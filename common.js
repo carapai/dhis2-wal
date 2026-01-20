@@ -14,7 +14,6 @@ const hirarchy = {
 };
 
 module.exports.api = axios.create({
-    // baseURL: "http://localhost:3001/",
     baseURL: "http://172.27.1.167:3001/",
 });
 
@@ -23,55 +22,58 @@ module.exports.allColumnsQuery = `select o.uid as orgUnit,
 	o.path,
 	ps.uid as stage,
 	ps.name as stagename,
-
-				( select ot.uid
-					from organisationunit ot
-					where ot.organisationunitid = tei.organisationunitid ) as regOrgUnit,
-
-				( select ot.path
-					from organisationunit ot
-					where ot.organisationunitid = tei.organisationunitid ) as regPath,
-	concat(tei.uid, psi.uid) as id,
-	pi.created as "pi_created",
-	pi.lastupdated as "pi_last_updated",
-	pi.incidentdate as "pi_incident_date",
-	pi.enrollmentdate as "pi_enrollment_date",
-	pi.completedby as "pi_completed_by",
-	pi.deleted as "pi_deleted",
-	pi.storedby as "pi_stored_by",
-	pi.status as "pi_status",
-	psi.uid as "event_uid",
-	psi.created as "event_created",
-	psi.lastupdated as "event_last_updated",
-	psi.deleted as "event_deleted",
-	psi.storedby as "event_stored_by",
-	psi.duedate as "event_duedate",
-	psi.executiondate as "event_execution_date",
-	psi.status as "event_status",
-	psi.completedby as "event_completed_by",
-	psi.completeddate as "event_completed_date",
-	psi.createdbyuserinfo->>'username' as "event_created_by",
-	psi.lastupdatedbyuserinfo->>'username' as "event_lastupdated_by",
+	(
+		select ot.uid
+		from organisationunit ot
+		where ot.organisationunitid = ev.organisationunitid
+	) as regOrgUnit,
+	(
+		select ot.path
+		from organisationunit ot
+		where ot.organisationunitid = ev.organisationunitid
+	) as regPath,
+	concat(te.uid, ev.uid) as id,
+	en.created as "pi_created",
+	en.lastupdated as "pi_last_updated",
+	en.occurreddate as "pi_incident_date",
+	en.enrollmentdate as "pi_enrollment_date",
+	en.completedby as "pi_completed_by",
+	en.deleted as "pi_deleted",
+	en.storedby as "pi_stored_by",
+	en.status as "pi_status",
+	ev.uid as "event_uid",
+	ev.created as "event_created",
+	ev.lastupdated as "event_last_updated",
+	ev.deleted as "event_deleted",
+	ev.storedby as "event_stored_by",
+	ev.scheduleddate as "event_duedate",
+	ev.occurreddate as "event_execution_date",
+	ev.status as "event_status",
+	ev.completedby as "event_completed_by",
+	ev.completeddate as "event_completed_date",
+	ev.createdbyuserinfo->>'username' as "event_created_by",
+	ev.lastupdatedbyuserinfo->>'username' as "event_lastupdated_by",
 	p.name as "program",
 	p.uid as "program_uid",
-	tei.uid as "tei_uid",
-	tei.created as "tei_created",
-	tei.lastupdated as "tei_last_updated",
-	tei.inactive as "tei_inactive",
-	tei.deleted as "tei_deleted",
-	tei.storedby as "tei_stored_by",
-
-				( select jsonb_object_agg(tea.uid, value) AS months
-					from trackedentityattributevalue teav
-					inner join trackedentityattribute tea using(trackedentityattributeid)
-					where teav.trackedentityinstanceid = tei.trackedentityinstanceid ) as attributes,
+	te.uid as "tei_uid",
+	te.created as "tei_created",
+	te.lastupdated as "tei_last_updated",
+	te.inactive as "tei_inactive",
+	te.deleted as "tei_deleted",
+	te.storedby as "tei_stored_by",
+	(
+		select jsonb_object_agg(tea.uid, value) AS months
+		from trackedentityattributevalue teav
+			inner join trackedentityattribute tea using(trackedentityattributeid)
+		where teav.trackedentityid = te.trackedentityid
+	) as attributes,
 	eventdatavalues
-from programstageinstance psi
-inner join programstage ps using(programstageid)
-inner join organisationunit o using(organisationunitid)
-inner join programinstance pi using(programinstanceid)
-inner join program p on(p.programid = pi.programid)
-inner join trackedentityinstance tei using(trackedentityinstanceid)`;
+from event ev
+	inner join programstage ps using(programstageid)
+	inner join organisationunit o using(organisationunitid)
+	inner join enrollment en using(enrollmentid)
+	inner join program p on(p.programid = en.programid)
+	inner join trackedentity te using(trackedentityid)`;
 
 module.exports.makeQuery = (condition) => {
     return `${this.allColumnsQuery} 
@@ -86,7 +88,7 @@ module.exports.intervalQuery = (minutes) => {
         .subtract(minutes, "minutes")
         .format("YYYY-MM-DD HH:mm:ss");
     return this.makeQuery(
-        `where p.uid = 'yDuAzyqYABS' and (psi.created >= '${end}' or psi.lastupdated >= '${end}');`
+        `where p.uid = 'yDuAzyqYABS' and (en.created >= '${end}' or en.lastupdated >= '${end}');`
     );
 };
 module.exports.intervalQuery2 = (minutes) => {
@@ -95,7 +97,7 @@ module.exports.intervalQuery2 = (minutes) => {
         .subtract(minutes, "minutes")
         .format("YYYY-MM-DD HH:mm:ss");
     return this.makeQuery(
-        `where p.uid = 'yDuAzyqYABS' and (tei.created >= '${end}' or tei.lastupdated >= '${end}');`
+        `where p.uid = 'yDuAzyqYABS' and (ev.created >= '${end}' or ev.lastupdated >= '${end}');`
     );
 };
 
@@ -103,9 +105,9 @@ module.exports.monthlyBacklogQuery = (date) =>
     this.makeQuery(`where p.uid = 'yDuAzyqYABS'
   and (
     to_char(tei.created, 'YYYY-MM') = '${date}'
-    or to_char(tei.lastupdated, 'YYYY-MM') = '${date}'
-    or to_char(psi.created, 'YYYY-MM') = '${date}'
-    or to_char(psi.lastupdated, 'YYYY-MM') = '${date}'
+    or to_char(en.lastupdated, 'YYYY-MM') = '${date}'
+    or to_char(ev.created, 'YYYY-MM') = '${date}'
+    or to_char(ev.lastupdated, 'YYYY-MM') = '${date}'
   );`);
 
 module.exports.processAndInsert = async (index, rows) => {
@@ -138,16 +140,16 @@ module.exports.processAndInsert = async (index, rows) => {
 
 module.exports.createBacklogQuery = (start, end) =>
     this.makeQuery(
-        `where p.uid = 'yDuAzyqYABS' and tei.lastupdated >= '${start}' and tei.lastupdated < '${end}';`
+        `where p.uid = 'yDuAzyqYABS' and en.lastupdated >= '${start}' and en.lastupdated < '${end}';`
     );
 module.exports.createBacklogQuery2 = (start, end) =>
     this.makeQuery(
-        `where p.uid = 'yDuAzyqYABS' and tei.created >= '${start}' and tei.created < '${end}';`
+        `where p.uid = 'yDuAzyqYABS' and ev.created >= '${start}' and ev.created < '${end}';`
     );
 
 module.exports.queryByNIN = (nin) =>
     this.makeQuery(
-        `where p.uid = 'yDuAzyqYABS' and tei.trackedentityinstanceid = (select trackedentityinstanceid from trackedentityattributevalue where value = '${nin}');`
+        `where p.uid = 'yDuAzyqYABS' and en.trackedentityinstanceid = (select trackedentityinstanceid from trackedentityattributevalue where value = '${nin}');`
     );
 
 module.exports.processAndInsert2 = async (index, rows) => {
